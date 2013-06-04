@@ -16,6 +16,8 @@
                               (not (regexp-match? #rx"-tag$" name))
                               (not (regexp-match? #rx"-get!$" name))
                               (not (regexp-match? #rx"-put!$" name))
+                              (not (regexp-match? #rx"str2" name))
+                              (not (regexp-match? #rx"2str" name))
                               (regexp-replace #rx"-pointer\\?$" name "?")))
            (except-out (all-defined-out)
                        nl-socket-free!
@@ -31,7 +33,6 @@
                        define-rtnl
                        with-finalizer
                        check-result
-                       nl-addr2str
                        nl-socket-alloc
                        nl-socket-free!
                        nl-socket-disable-seq-check!
@@ -389,11 +390,8 @@
   (rtnl-link-set-broadcast! rtnl-link-get-broadcast _nl-addr-pointer/null)
   (rtnl-link-set-link!      rtnl-link-get-link      _int)
   (rtnl-link-set-master!    rtnl-link-get-master    _int)
-  (rtnl-link-set-carrier!   rtnl-link-get-carrier   _uint8)
-  (rtnl-link-set-operstate! rtnl-link-get-operstate _uint8)
-  (rtnl-link-set-linkmode!  rtnl-link-get-linkmode  _uint8)
   (rtnl-link-set-ifalias!   rtnl-link-get-ifalias   _string/utf-8)
-  (rtnl-link-set-type!      rtnl-link-get-type      _string/utf-8))
+  (rtnl-link-set-type!      rtnl-link-get-type      _symbol))
 
 (define-rtnl-link-accessors
   (rtnl-link-set-promiscuity!   rtnl-link-get-promiscuity   _uint32)
@@ -554,6 +552,40 @@
 (define-rtnl rtnl-link-vlan-get-id
              (_fun _rtnl-link-pointer --> _int))
 
+(define-rtnl rtnl-link-vlan-flags2str
+             (_fun _int
+                   (buf : _bytes = (make-bytes 512))
+                   (size : _size = (bytes-length buf))
+                   --> (result : _bytes)
+                   --> (and result
+                            (string-trim
+                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+
+(define-rtnl rtnl-link-vlan-str2flags
+             (_fun _string/utf-8 --> _int))
+
+(define-rtnl rtnl-link-vlan-get-flags
+             (_fun _rtnl-link-pointer
+                   --> (result : _uint)
+                   --> (map string->symbol
+                            (string-split (rtnl-link-vlan-flags2str result) ","))))
+
+(define-rtnl rtnl-link-vlan-set-flags!
+             (_fun _rtnl-link-pointer
+                   (type: _uint
+                    pre: (scheme => (rtnl-link-vlan-str2flags
+                                      (string-join
+                                        (map symbol->string scheme) ","))))
+                   --> _void))
+
+(define-rtnl rtnl-link-vlan-unset-flags!
+             (_fun _rtnl-link-pointer
+                   (type: _uint
+                    pre: (scheme => (rtnl-link-vlan-str2flags
+                                      (string-join
+                                        (map symbol->string scheme) ","))))
+                   --> _void))
+
 
 ;
 ; Link Cache
@@ -594,6 +626,112 @@
              (_fun _nl-cache-pointer
                    _string/utf-8
                    --> _int))
+
+(define-rtnl rtnl-link-flags2str
+             (_fun _int
+                   (buf : _bytes = (make-bytes 1024))
+                   (size : _size = (bytes-length buf))
+                   --> (result : _bytes)
+                   --> (and result
+                            (string-trim
+                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+
+(define-rtnl rtnl-link-str2flags
+             (_fun _string/utf-8 --> _int))
+
+(define-rtnl rtnl-link-operstate2str
+             (_fun _uint8
+                   (buf : _bytes = (make-bytes 32))
+                   (size : _size = (bytes-length buf))
+                   --> (result : _bytes)
+                   --> (and result
+                            (string-trim
+                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+
+(define-rtnl rtnl-link-str2operstate
+             (_fun _string/utf-8 --> _int))
+
+(define-rtnl rtnl-link-mode2str
+             (_fun _uint8
+                   (buf : _bytes = (make-bytes 32))
+                   (size : _size = (bytes-length buf))
+                   --> (result : _bytes)
+                   --> (and result
+                            (string-trim
+                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+
+(define-rtnl rtnl-link-str2mode
+             (_fun _string/utf-8 --> _int))
+
+(define-rtnl rtnl-link-carrier2str
+             (_fun _uint8
+                   (buf : _bytes = (make-bytes 32))
+                   (size : _size = (bytes-length buf))
+                   --> (result : _bytes)
+                   --> (and result
+                            (string-trim
+                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+
+(define-rtnl rtnl-link-str2carrier
+             (_fun _string/utf-8 --> _int))
+
+(define-rtnl rtnl-link-get-flags
+             (_fun _rtnl-link-pointer
+                   --> (result : _uint)
+                   --> (map string->symbol
+                            (string-split (rtnl-link-flags2str result) ","))))
+
+(define-rtnl rtnl-link-set-flags!
+             (_fun _rtnl-link-pointer
+                   (type: _uint
+                    pre: (scheme => (rtnl-link-str2flags
+                                      (string-join
+                                        (map symbol->string scheme) ","))))
+                   --> _void))
+
+(define-rtnl rtnl-link-unset-flags!
+             (_fun _rtnl-link-pointer
+                   (type: _uint
+                    pre: (scheme => (rtnl-link-str2flags
+                                      (string-join
+                                        (map symbol->string scheme) ","))))
+                   --> _void))
+
+(define-rtnl rtnl-link-get-carrier
+             (_fun _rtnl-link-pointer
+                   --> (result : _uint)
+                   --> (string->symbol (rtnl-link-carrier2str result))))
+
+(define-rtnl rtnl-link-set-carrier!
+             (_fun _rtnl-link-pointer
+                   (type: _uint
+                    pre: (scheme => (rtnl-link-str2carrier
+                                      (symbol->string scheme))))
+                   --> _void))
+
+(define-rtnl rtnl-link-get-operstate
+             (_fun _rtnl-link-pointer
+                   --> (result : _uint)
+                   --> (string->symbol (rtnl-link-operstate2str result))))
+
+(define-rtnl rtnl-link-set-operstate!
+             (_fun _rtnl-link-pointer
+                   (type: _uint
+                    pre: (scheme => (rtnl-link-str2operstate
+                                      (symbol->string scheme))))
+                   --> _void))
+
+(define-rtnl rtnl-link-get-linkmode
+             (_fun _rtnl-link-pointer
+                   --> (result : _uint)
+                   --> (string->symbol (rtnl-link-mode2str result))))
+
+(define-rtnl rtnl-link-set-linkmode!
+             (_fun _rtnl-link-pointer
+                   (type: _uint
+                    pre: (scheme => (rtnl-link-str2mode
+                                      (symbol->string scheme))))
+                   --> _void))
 
 
 ;
@@ -661,6 +799,40 @@
 
 (define-rtnl rtnl-addr-get-last-update-time
              (_fun _rtnl-addr-pointer --> _uint32))
+
+(define-rtnl rtnl-addr-flags2str
+             (_fun _int
+                   (buf : _bytes = (make-bytes 512))
+                   (size : _size = (bytes-length buf))
+                   --> (result : _bytes)
+                   --> (and result
+                            (string-trim
+                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+
+(define-rtnl rtnl-addr-str2flags
+             (_fun _string/utf-8 --> _int))
+
+(define-rtnl rtnl-addr-get-flags
+             (_fun _rtnl-addr-pointer
+                   --> (result : _uint)
+                   --> (map string->symbol
+                            (string-split (rtnl-addr-flags2str result) ","))))
+
+(define-rtnl rtnl-addr-set-flags!
+             (_fun _rtnl-addr-pointer
+                   (type: _uint
+                    pre: (scheme => (rtnl-addr-str2flags
+                                      (string-join
+                                        (map symbol->string scheme) ","))))
+                   --> _void))
+
+(define-rtnl rtnl-addr-unset-flags!
+             (_fun _rtnl-addr-pointer
+                   (type: _uint
+                    pre: (scheme => (rtnl-addr-str2flags
+                                      (string-join
+                                        (map symbol->string scheme) ","))))
+                   --> _void))
 
 
 ;
@@ -738,6 +910,40 @@
 (define (rtnl-route-nexthops route)
   (for/list ((i (in-range (rtnl-route-get-nnexthops route))))
     (rtnl-route-nexthop-n route i)))
+
+(define-rtnl rtnl-route-nh-flags2str
+             (_fun _int
+                   (buf : _bytes = (make-bytes 512))
+                   (size : _size = (bytes-length buf))
+                   --> (result : _bytes)
+                   --> (and result
+                            (string-trim
+                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+
+(define-rtnl rtnl-route-nh-str2flags
+             (_fun _string/utf-8 --> _int))
+
+(define-rtnl rtnl-route-nh-get-flags
+             (_fun _rtnl-link-pointer
+                   --> (result : _uint)
+                   --> (map string->symbol
+                            (string-split (rtnl-route-nh-flags2str result) ","))))
+
+(define-rtnl rtnl-route-nh-set-flags!
+             (_fun _rtnl-link-pointer
+                   (type: _uint
+                    pre: (scheme => (rtnl-route-nh-str2flags
+                                      (string-join
+                                        (map symbol->string scheme) ","))))
+                   --> _void))
+
+(define-rtnl rtnl-route-nh-unset-flags!
+             (_fun _rtnl-link-pointer
+                   (type: _uint
+                    pre: (scheme => (rtnl-route-nh-str2flags
+                                      (string-join
+                                        (map symbol->string scheme) ","))))
+                   --> _void))
 
 
 ;
