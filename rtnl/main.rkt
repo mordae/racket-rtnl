@@ -206,7 +206,7 @@
 
 (define-nl nl-connect!
            (_fun _nl-socket-pointer
-                 _int
+                 (_int = 0)
                  --> (result : _int)
                  --> (check-result result)))
 
