@@ -31,7 +31,12 @@
                        define-rtnl
                        with-finalizer
                        check-result
-                       nl-addr2str)))
+                       nl-addr2str
+                       nl-socket-alloc
+                       nl-socket-free!
+                       nl-socket-disable-seq-check!
+                       nl-connect!
+                       nl-close!)))
 
 
 (define libnl       (ffi-lib "libnl-3" '("200" "")))
@@ -215,6 +220,12 @@
 
 (define-nl nl-socket-disable-seq-check!
            (_fun _nl-socket-pointer --> _void))
+
+(define (nl-socket)
+  (let ((s (nl-socket-alloc)))
+    (nl-socket-disable-seq-check! s)
+    (nl-connect! s)
+    s))
 
 
 ;
