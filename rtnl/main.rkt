@@ -342,7 +342,7 @@
 (define-rtnl rtnl-link-add!
              (_fun _nl-socket-pointer
                    _rtnl-link-pointer
-                   (_int = #x400)
+                   (_int = #x600)
                    --> (result : _int)
                    --> (check-result result)))
 
@@ -350,7 +350,7 @@
              (_fun _nl-socket-pointer
                    _rtnl-link-pointer
                    _rtnl-link-pointer
-                   (_int = #x100)
+                   (_int = #x500)
                    --> (result : _int)
                    --> (check-result result)))
 
