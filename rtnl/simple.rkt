@@ -59,7 +59,7 @@
         (link (rtnl-link-vlan-alloc)))
     (rtnl-link-set-name! link name)
     (rtnl-link-set-link! link (rtnl-link-get-ifindex parent))
-    (rtnl-link-vlan-set-id! link 123)
+    (rtnl-link-vlan-set-id! link id)
     (rtnl-link-add! socket link)))
 
 
