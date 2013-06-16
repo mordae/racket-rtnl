@@ -78,6 +78,13 @@
     (rtnl-link-change! socket link change)))
 
 
+(define (set-interface-addr! name addr)
+  (let* ((link (rtnl-link-get/kernel socket -1 name))
+         (change (rtnl-link-alloc)))
+    (rtnl-link-set-addr! change (nl-addr-parse addr 'llc))
+    (rtnl-link-change! socket link change)))
+
+
 (define (get-interface-ipaddrs name)
   (let ((ifindex (rtnl-link-get-ifindex
                    (rtnl-link-get/kernel socket -1 name))))
