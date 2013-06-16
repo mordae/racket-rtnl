@@ -104,4 +104,12 @@
     (rtnl-addr-delete! socket addr)))
 
 
+(define (remove-interface-ipaddr/safe name ip)
+  (let ((ips (remove ip (get-interface-ipaddrs name))))
+    (remove-interface-ipaddr name ip)
+    (for ((ip (in-list ips)))
+      (unless (member ip (get-interface-ipaddrs name))
+        (add-interface-ipaddr name ip)))))
+
+
 ; vim:set ts=2 sw=2 et:
