@@ -296,26 +296,22 @@
 (define-nl nl-cache-get-first
            (_fun _nl-cache-pointer
                  --> (result : _nl-object-pointer/null)
-                 --> (with-finalizer (nl-object-upcast result)
-                                     nl-object-put!)))
+                 --> (nl-object-upcast result)))
 
 (define-nl nl-cache-get-last
            (_fun _nl-cache-pointer
                  --> (result : _nl-object-pointer/null)
-                 --> (with-finalizer (nl-object-upcast result)
-                                     nl-object-put!)))
+                 --> (nl-object-upcast result)))
 
 (define-nl nl-cache-get-next
            (_fun _nl-object-pointer
                  --> (result : _nl-object-pointer/null)
-                 --> (with-finalizer (nl-object-upcast result)
-                                     nl-object-put!)))
+                 --> (nl-object-upcast result)))
 
 (define-nl nl-cache-get-prev
            (_fun _nl-object-pointer
                  --> (result : _nl-object-pointer/null)
-                 --> (with-finalizer (nl-object-upcast result)
-                                     nl-object-put!)))
+                 --> (nl-object-upcast result)))
 
 (define (nl-cache->list cache)
   (let loop ((item (nl-cache-get-first cache)))
