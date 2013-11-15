@@ -9,7 +9,8 @@
          racket/contract
          racket/match
          racket/string
-         racket/provide)
+         racket/provide
+         throw)
 
 (provide (filtered-out (lambda (name)
                          (and (regexp-match? #rx"^[^_]" name)
@@ -44,7 +45,7 @@
 (define libnl-route (ffi-lib "libnl-route-3" '("200" "")))
 
 
-(define-struct/contract (exn:fail:nl exn:fail) ())
+(define-struct (exn:fail:nl exn:fail) ())
 
 
 (define-syntax (define-nl stx)
@@ -73,8 +74,8 @@
 
 (define (check-result result)
   (unless (= 0 result)
-    (raise (exn:fail:nl (nl-geterror (abs result))
-                        (current-continuation-marks)))))
+    (throw exn:fail:nl
+           'rtnl (nl-geterror (abs result)))))
 
 
 (define-cpointer-type _nl-object-pointer)
