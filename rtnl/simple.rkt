@@ -78,6 +78,11 @@
     (rtnl-link-change! socket link change)))
 
 
+(define (get-interface-up name)
+  (let ((link (rtnl-link-get/kernel socket -1 name)))
+    (and (memq 'up (rtnl-link-get-flags link)) #t)))
+
+
 (define (set-interface-addr! name addr)
   (let* ((link (rtnl-link-get/kernel socket -1 name))
          (change (rtnl-link-alloc)))
