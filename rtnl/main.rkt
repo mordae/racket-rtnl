@@ -10,7 +10,7 @@
          racket/match
          racket/string
          racket/provide
-         throw)
+         misc1/throw)
 
 (provide (filtered-out (lambda (name)
                          (and (regexp-match? #rx"^[^_]" name)
