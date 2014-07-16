@@ -484,6 +484,12 @@
              (_fun --> (result : _rtnl-link-pointer)
                    --> (with-finalizer result nl-object-put!)))
 
+(define-rtnl rtnl-link-bridge-add!
+             (_fun _nl-socket-pointer
+                   _string/utf-8
+                   --> (result : _int)
+                   --> (check-result result)))
+
 (define-rtnl rtnl-link-is-bridge?
              (_fun _rtnl-link-pointer --> _bool))
 
