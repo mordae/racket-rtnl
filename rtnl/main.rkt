@@ -3,90 +3,128 @@
 ; Racket FFI Bindings for Route-Netlink Library
 ;
 
-(require (rename-in ffi/unsafe (-> -->))
-         (for-syntax racket/base)
-         (for-syntax racket/syntax)
+(require
+  (for-syntax racket/base)
+  (for-syntax racket/syntax))
+
+(require
+  (rename-in ffi/unsafe (-> -->)))
+
+(require ffi/unsafe/define
+         ffi/unsafe/atomic
+         ffi/unsafe/alloc
          racket/contract
-         racket/match
          racket/string
-         racket/provide
-         misc1/syntax
+         racket/match
+         racket/list)
+
+(require misc1/syntax
          misc1/throw)
 
-(provide (filtered-out (lambda (name)
-                         (and (regexp-match? #rx"^[^_]" name)
-                              (not (regexp-match? #rx"-tag$" name))
-                              (not (regexp-match? #rx"-get!$" name))
-                              (not (regexp-match? #rx"-put!$" name))
-                              (not (regexp-match? #rx"str2" name))
-                              (not (regexp-match? #rx"2str" name))
-                              (regexp-replace #rx"-pointer\\?$" name "?")))
-           (except-out (all-defined-out)
-                       nl-socket-free!
-                       define-rtnl-link-accessors
-                       define-rtnl-addr-accessors
-                       define-rtnl-route-accessors
-                       define-rtnl-nexthop-accessors
-                       rtnl-route-get-nnexthops
-                       rtnl-route-nexthop-n
-                       libnl
-                       libnl-route
-                       define-nl
-                       define-rtnl
-                       with-finalizer
-                       check-result
-                       nl-socket-alloc
-                       nl-socket-free!
-                       nl-socket-disable-seq-check!
-                       nl-connect!
-                       nl-close!)))
-
-
-(define libnl       (ffi-lib "libnl-3" '("200" "")))
-(define libnl-route (ffi-lib "libnl-route-3" '("200" "")))
+(provide
+  (contract-out
+    (exn:fail:nl? predicate/c)
+    (nl-object-pointer? predicate/c)
+    (nl-cache-pointer? predicate/c)
+    (nl-socket-pointer? predicate/c)
+    (nl-addr-pointer? predicate/c)
+    (rtnl-link-pointer? predicate/c)
+    (rtnl-route-pointer? predicate/c)
+    (rtnl-nexthop-pointer? predicate/c)
+    (rtnl-addr-pointer? predicate/c)
+    (nl-addr->string (-> nl-addr-pointer? string?))
+    (nl-socket (-> nl-socket-pointer?))
+    (nl-cache->list (-> nl-cache-pointer? (listof nl-object-pointer?)))
+    (rtnl-route-nexthops (-> rtnl-route-pointer? (listof rtnl-nexthop-pointer?)))))
 
 
 (define-struct (exn:fail:nl exn:fail) ())
 
 
+(define-ffi-definer define-libnl/raw
+                    (ffi-lib "libnl-3" '("200" "")))
+
+(define-ffi-definer define-libnl-route/raw
+                    (ffi-lib "libnl-route-3" '("200" "")))
+
+
+(define-for-syntax (name->symbol name)
+  (string->symbol
+    (regexp-replace* #rx"[?!]"
+      (regexp-replace* #rx"[-/]"
+        (symbol->string (syntax-e name)) "_") "")))
+
 (define-syntax (define-nl stx)
   (syntax-case stx ()
-    ((_ name type)
-     (with-syntax ((symbol (regexp-replace* #rx"[?!]"
-                             (regexp-replace* #rx"[-/]"
-                               (symbol->string (syntax-e #'name)) "_") "")))
-       #'(define name (get-ffi-obj symbol libnl type))))))
-
+    ((_ name _type opt ...)
+     (with-syntax ((symbol (name->symbol #'name)))
+       #'(begin
+           (provide name)
+           (define-libnl/raw name _type #:c-id symbol opt ...))))))
 
 (define-syntax (define-rtnl stx)
   (syntax-case stx ()
-    ((_ name type)
-     (with-syntax ((symbol (regexp-replace* #rx"[?!]"
-                             (regexp-replace* #rx"[-/]"
-                               (symbol->string (syntax-e #'name)) "_") "")))
-       #'(define name (get-ffi-obj symbol libnl-route type))))))
+    ((_ name _type opt ...)
+     (with-syntax ((symbol (name->symbol #'name)))
+       #'(begin
+           (provide name)
+           (define-libnl-route/raw name _type #:c-id symbol opt ...))))))
 
+(define-syntax define-getter
+  (syntax-rules ()
+    ((_ name _object-type _value-type)
+     (define-rtnl name (_fun _object-type --> _value-type)))
 
-(define (with-finalizer result finalizer)
-  (when result
-    (register-finalizer result finalizer))
-  result)
+    ((_ name _object-type _value-type wrapper)
+     (define-rtnl name (_fun _object-type --> _value-type) #:wrap wrapper))))
+
+(define-syntax-rule (define-setter name _object-type _value-type)
+  (define-rtnl name (_fun _object-type _value-type --> _void)))
+
+(define-syntax define-accessors
+  (syntax-rules ()
+    ((_ _object-type (getter-name _getter-value-type)
+                     (setter-name _setter-value-type))
+     (begin
+       (define-getter getter-name _object-type _getter-value-type)
+       (define-setter setter-name _object-type _setter-value-type)))
+
+    ((_ _object-type (getter-name _getter-value-type wrapper)
+                     (setter-name _setter-value-type))
+     (begin
+       (define-getter getter-name _object-type _getter-value-type wrapper)
+       (define-setter setter-name _object-type _setter-value-type)))))
+
+(define-syntax-rule (define-simple-accessors _object-type
+                      (getter-name setter-name _value-type) ...)
+  (begin
+    (define-accessors _object-type
+                      (getter-name _value-type)
+                      (setter-name _value-type))
+    ...))
 
 
 (define (check-result result)
   (unless (= 0 result)
-    (throw exn:fail:nl
-           'rtnl (nl-geterror (abs result)))))
+    (throw exn:fail:nl 'rtnl (nl-geterror (abs result)))))
 
 (define (check-int-result result)
-  (producing result
-    (when (negative? result)
-      (throw exn:fail:nl 'rtnl (nl-geterror (abs result))))))
+  (when (negative? result)
+    (throw exn:fail:nl 'rtnl (nl-geterror (abs result))))
+  result)
 
 (define (check-buffer->string/utf-8 buffer)
   (if buffer
       (cast buffer _bytes _string/utf-8)
       (throw exn:fail:nl 'rtnl "invalid value")))
+
+(define ((lender incref) proc)
+  (λ args
+    (call-as-atomic
+      (λ_
+        (producing (result (apply proc args))
+          (when result
+            (incref result)))))))
 
 
 (define-cpointer-type _nl-object-pointer)
@@ -161,7 +199,12 @@
 ;
 
 (define-nl nl-addr-put!
-           (_fun _nl-addr-pointer --> _void))
+           (_fun _nl-addr-pointer --> _void)
+           #:wrap (releaser))
+
+(define-nl nl-addr-get!
+           (_fun _nl-addr-pointer --> _nl-addr-pointer)
+           #:wrap (retainer nl-addr-put!))
 
 (define-nl nl-addr-parse
            (_fun _string/utf-8
@@ -169,8 +212,8 @@
                  (addr : (_ptr o _nl-addr-pointer/null))
                  --> (result : _int)
                  --> (begin
-                       (check-result result)
-                       (with-finalizer addr nl-addr-put!))))
+                       (check-result result) addr))
+           #:wrap (allocator nl-addr-put!))
 
 (define-nl nl-addr-cmp
            (_fun _nl-addr-pointer
@@ -180,6 +223,9 @@
 
 (define-nl nl-addr-iszero?
            (_fun _nl-addr-pointer --> _bool))
+
+(define-nl nl-addr-valid?
+           (_fun _string/utf-8 _nl-addr-family --> _bool))
 
 (define-nl nl-addr-set-family!
            (_fun _nl-addr-pointer
@@ -201,7 +247,7 @@
 (define-nl nl-addr2str
            (_fun (addr : _nl-addr-pointer)
                  (buffer : _bytes
-                         = (make-bytes (+ 5 (* 4 (nl-addr-get-len addr)))))
+                         = (make-bytes (+ 6 (* 4 (nl-addr-get-len addr)))))
                  (size : _size = (bytes-length buffer))
                  --> (result : _bytes)
                  --> (check-buffer->string/utf-8 buffer)))
@@ -214,12 +260,13 @@
 ; Main Netlink Socket
 ;
 
-(define-nl nl-socket-alloc
-           (_fun --> (result : _nl-socket-pointer)
-                 --> (with-finalizer result nl-socket-free!)))
-
 (define-nl nl-socket-free!
-           (_fun _nl-socket-pointer --> _void))
+           (_fun _nl-socket-pointer --> _void)
+           #:wrap (releaser))
+
+(define-nl nl-socket-alloc
+           (_fun --> _nl-socket-pointer)
+           #:wrap (allocator nl-socket-free!))
 
 (define-nl nl-connect!
            (_fun _nl-socket-pointer
@@ -244,17 +291,18 @@
 ; Generic Objects
 ;
 
-(define-nl nl-object-get!
-           (_fun _nl-object-pointer --> _void))
-
 (define-nl nl-object-put!
-           (_fun _nl-object-pointer --> _void))
+           (_fun _nl-object-pointer --> _void)
+           #:wrap (releaser))
+
+(define-nl nl-object-get!
+           (_fun _nl-object-pointer --> _void)
+           #:wrap (retainer nl-object-put!))
 
 (define-nl nl-object-clone
            (_fun _nl-object-pointer
                  --> (result : _nl-object-pointer/null)
-                 --> (with-finalizer (nl-object-upcast result)
-                                     nl-object-put!)))
+                 --> (nl-object-upcast result)))
 
 (define-nl nl-object-identical?
            (_fun _nl-object-pointer
@@ -266,27 +314,20 @@
                  --> (result : _string/utf-8)
                  --> (string->symbol result)))
 
-(define-nl nl-object-get-cache
-           (_fun _nl-object-pointer
-                 --> (result : _nl-cache-pointer/null)
-                 --> (with-finalizer result nl-cache-put!)))
-
 (define (nl-object-upcast object)
-  (if object
-    (let ((new-object
-            (match (nl-object-get-type object)
-                   ('route/link    (cast object _nl-object-pointer
-                                                _rtnl-link-pointer))
-                   ('route/route   (cast object _nl-object-pointer
-                                                _rtnl-route-pointer))
-                   ('route/nexthop (cast object _nl-object-pointer
-                                                _rtnl-nexthop-pointer))
-                   ('route/addr    (cast object _nl-object-pointer
-                                                _rtnl-addr-pointer))
-                   (_              object))))
-      (nl-object-get! new-object)
-      (with-finalizer new-object nl-object-put!))
-    #f))
+  (and object
+       (producing (new-object
+                    (match (nl-object-get-type object)
+                      ('route/link
+                       (cast object _nl-object-pointer _rtnl-link-pointer))
+                      ('route/route
+                       (cast object _nl-object-pointer _rtnl-route-pointer))
+                      ('route/nexthop
+                       (cast object _nl-object-pointer _rtnl-nexthop-pointer))
+                      ('route/addr
+                       (cast object _nl-object-pointer _rtnl-addr-pointer))
+                      (else object)))
+         (nl-object-get! new-object))))
 
 
 ;
@@ -294,7 +335,8 @@
 ;
 
 (define-nl nl-cache-put!
-           (_fun _nl-cache-pointer --> _void))
+           (_fun _nl-cache-pointer --> _void)
+           #:wrap (releaser))
 
 (define-nl nl-cache-nitems
            (_fun _nl-cache-pointer
@@ -337,8 +379,12 @@
            (_fun _nl-cache-pointer
                  _nl-object-pointer
                  --> (result : _nl-object-pointer/null)
-                 --> (with-finalizer (nl-object-upcast result)
-                                     nl-object-put!)))
+                 --> (nl-object-upcast result)))
+
+(define-nl nl-object-get-cache
+           (_fun _nl-object-pointer
+                 --> _nl-cache-pointer/null)
+           #:wrap (allocator nl-cache-put!))
 
 
 ;
@@ -346,8 +392,8 @@
 ;
 
 (define-rtnl rtnl-link-alloc
-             (_fun --> (result : _rtnl-link-pointer)
-                   --> (with-finalizer result nl-object-put!)))
+             (_fun --> _rtnl-link-pointer)
+             #:wrap (allocator nl-object-put!))
 
 (define-rtnl rtnl-link-add!
              (_fun _nl-socket-pointer
@@ -376,36 +422,33 @@
                    _string/utf-8
                    (link : (_ptr o _rtnl-link-pointer/null))
                    --> (result : _int)
-                   --> (begin
-                         (check-result result)
-                         (with-finalizer link nl-object-put!))))
+                   --> (begin (check-result result) link))
+             #:wrap (allocator nl-object-put!))
 
-(define-syntax-rule (define-rtnl-link-accessors (setter getter type) ...)
-  (begin
-    (begin
-      (define-rtnl setter (_fun _rtnl-link-pointer type --> _void))
-      (define-rtnl getter (_fun _rtnl-link-pointer --> type)))
-    ...))
+(define-simple-accessors _rtnl-link-pointer
+  (rtnl-link-get-qdisc rtnl-link-set-qdisc! _string/utf-8)
+  (rtnl-link-get-name rtnl-link-set-name! _string/utf-8)
+  (rtnl-link-get-group rtnl-link-set-group! _uint32)
+  (rtnl-link-get-mtu rtnl-link-set-mtu! _uint)
+  (rtnl-link-get-txqlen rtnl-link-set-txqlen! _uint)
+  (rtnl-link-get-ifindex rtnl-link-set-ifindex! _int)
+  (rtnl-link-get-family rtnl-link-set-family! _nl-addr-family)
+  (rtnl-link-get-link rtnl-link-set-link! _int)
+  (rtnl-link-get-master rtnl-link-set-master! _int)
+  (rtnl-link-get-promiscuity rtnl-link-set-promiscuity! _uint32)
+  (rtnl-link-get-num-tx-queues rtnl-link-set-num-tx-queues! _uint32)
+  (rtnl-link-get-num-rx-queues rtnl-link-set-num-rx-queues! _uint32)
+  (rtnl-link-get-ifalias rtnl-link-set-ifalias! _string/utf-8))
 
-(define-rtnl-link-accessors
-  (rtnl-link-set-qdisc!     rtnl-link-get-qdisc     _string/utf-8)
-  (rtnl-link-set-name!      rtnl-link-get-name      _string/utf-8)
-  (rtnl-link-set-group!     rtnl-link-get-group     _uint32)
-  (rtnl-link-set-mtu!       rtnl-link-get-mtu       _uint)
-  (rtnl-link-set-txqlen!    rtnl-link-get-txqlen    _uint)
-  (rtnl-link-set-ifindex!   rtnl-link-get-ifindex   _int)
-  (rtnl-link-set-family!    rtnl-link-get-family    _nl-addr-family)
-  ;(rtnl-link-set-arptype!   rtnl-link-get-arptype   _uint)
-  (rtnl-link-set-addr!      rtnl-link-get-addr      _nl-addr-pointer/null)
-  (rtnl-link-set-broadcast! rtnl-link-get-broadcast _nl-addr-pointer/null)
-  (rtnl-link-set-link!      rtnl-link-get-link      _int)
-  (rtnl-link-set-master!    rtnl-link-get-master    _int)
-  (rtnl-link-set-ifalias!   rtnl-link-get-ifalias   _string/utf-8))
+(define-accessors _rtnl-link-pointer
+                  (rtnl-link-get-addr _nl-addr-pointer/null
+                                      (lender nl-addr-get!))
+                  (rtnl-link-set-addr! _nl-addr-pointer/null))
 
-(define-rtnl-link-accessors
-  (rtnl-link-set-promiscuity!   rtnl-link-get-promiscuity   _uint32)
-  (rtnl-link-set-num-tx-queues! rtnl-link-get-num-tx-queues _uint32)
-  (rtnl-link-set-num-rx-queues! rtnl-link-get-num-rx-queues _uint32))
+(define-accessors _rtnl-link-pointer
+                  (rtnl-link-get-broadcast _nl-addr-pointer/null
+                                           (lender nl-addr-get!))
+                  (rtnl-link-set-broadcast! _nl-addr-pointer/null))
 
 (define-rtnl rtnl-link-enslave/ifindex!
              (_fun _nl-socket-pointer
@@ -439,8 +482,8 @@
 ;
 
 (define-rtnl rtnl-link-bond-alloc
-             (_fun --> (result : _rtnl-link-pointer)
-                   --> (with-finalizer result nl-object-put!)))
+             (_fun --> _rtnl-link-pointer)
+             #:wrap (allocator nl-object-put!))
 
 (define-rtnl rtnl-link-bond-add!
              (_fun _nl-socket-pointer
@@ -481,8 +524,8 @@
 ;
 
 (define-rtnl rtnl-link-bridge-alloc
-             (_fun --> (result : _rtnl-link-pointer)
-                   --> (with-finalizer result nl-object-put!)))
+             (_fun --> _rtnl-link-pointer)
+             #:wrap (allocator nl-object-put!))
 
 (define-rtnl rtnl-link-bridge-add!
              (_fun _nl-socket-pointer
@@ -556,8 +599,8 @@
 ;
 
 (define-rtnl rtnl-link-vlan-alloc
-             (_fun --> (result : _rtnl-link-pointer)
-                   --> (with-finalizer result nl-object-put!)))
+             (_fun --> _rtnl-link-pointer)
+             #:wrap (allocator nl-object-put!))
 
 (define-rtnl rtnl-link-is-vlan?
              (_fun _rtnl-link-pointer --> _bool))
@@ -617,21 +660,20 @@
                    (_int = 0)
                    (cache : (_ptr o _nl-cache-pointer))
                    --> (result : _int)
-                   --> (begin
-                         (check-result result)
-                         (with-finalizer cache nl-cache-put!))))
+                   --> (begin (check-result result) cache))
+             #:wrap (allocator nl-cache-put!))
 
 (define-rtnl rtnl-link-get
              (_fun _nl-cache-pointer
                    _int
-                   --> (result : _rtnl-link-pointer/null)
-                   --> (with-finalizer result nl-object-put!)))
+                   --> _rtnl-link-pointer/null)
+             #:wrap (allocator nl-object-put!))
 
 (define-rtnl rtnl-link-get-by-name
              (_fun _nl-cache-pointer
                    _string/utf-8
-                   --> (result : _rtnl-link-pointer/null)
-                   --> (with-finalizer result nl-object-put!)))
+                   --> _rtnl-link-pointer/null)
+             #:wrap (allocator nl-object-put!))
 
 (define-rtnl rtnl-link-i2name
              (_fun _nl-cache-pointer
@@ -773,23 +815,22 @@
 ;
 
 (define-rtnl rtnl-addr-alloc
-             (_fun --> (result : _rtnl-addr-pointer)
-                   --> (with-finalizer result nl-object-put!)))
+             (_fun --> _rtnl-addr-pointer)
+             #:wrap (allocator nl-object-put!))
 
 (define-rtnl rtnl-addr-alloc-cache
              (_fun _nl-socket-pointer
                    (cache : (_ptr o _nl-cache-pointer))
                    --> (result : _int)
-                   --> (begin
-                         (check-result result)
-                         (with-finalizer cache nl-cache-put!))))
+                   --> (begin (check-result result) cache))
+             #:wrap (allocator nl-cache-put!))
 
 (define-rtnl rtnl-addr-get
              (_fun _nl-cache-pointer
                    _int
                    _nl-addr-pointer
-                   --> (result : _rtnl-addr-pointer/null)
-                   --> (with-finalizer result nl-object-put!)))
+                   --> _rtnl-addr-pointer/null)
+             #:wrap (allocator nl-object-put!))
 
 (define-rtnl rtnl-addr-add!
              (_fun _nl-socket-pointer
@@ -805,28 +846,55 @@
                    --> (result : _int)
                    --> (check-result result)))
 
-(define-syntax-rule (define-rtnl-addr-accessors (setter getter type) ...)
-  (begin
-    (begin
-      (define-rtnl setter (_fun _rtnl-addr-pointer type --> _void))
-      (define-rtnl getter (_fun _rtnl-addr-pointer --> type)))
-    ...))
+(define-rtnl rtnl-scope2str
+             (_fun _uint8
+                   (buffer : _bytes = (make-bytes 32))
+                   (size : _size = (bytes-length buffer))
+                   --> (result : _bytes)
+                   --> (check-buffer->string/utf-8 buffer)))
 
-(define-rtnl-addr-accessors
-  (rtnl-addr-set-ifindex!   rtnl-addr-get-ifindex    _int)
-  (rtnl-addr-set-link!      rtnl-addr-get-link       _rtnl-link-pointer/null)
-  (rtnl-addr-set-family!    rtnl-addr-get-family     _nl-addr-family)
-  (rtnl-addr-set-prefixlen! rtnl-addr-get-prefixlen  _int)
-  (rtnl-addr-set-scope!     rtnl-addr-get-scope      _int)
-  (rtnl-addr-set-local!     rtnl-addr-get-local      _nl-addr-pointer/null)
-  (rtnl-addr-set-peer!      rtnl-addr-get-peer       _nl-addr-pointer/null)
-  (rtnl-addr-set-broadcast! rtnl-addr-get-broadcast  _nl-addr-pointer/null)
-  (rtnl-addr-set-multicast! rtnl-addr-get-multicast  _nl-addr-pointer/null)
-  (rtnl-addr-set-anycast!   rtnl-addr-get-anycast    _nl-addr-pointer/null))
+(define-rtnl rtnl-str2scope
+             (_fun _string/utf-8
+                   --> (result : _int)
+                   --> (check-int-result result)))
 
-(define-rtnl-addr-accessors
-  (rtnl-addr-set-valid-lifetime!     rtnl-addr-get-valid-lifetime     _uint32)
-  (rtnl-addr-set-preferred-lifetime! rtnl-addr-get-preferred-lifetime _uint32))
+(define-simple-accessors _rtnl-addr-pointer
+  (rtnl-addr-get-ifindex rtnl-addr-set-ifindex! _int)
+  (rtnl-addr-get-family rtnl-addr-set-family! _nl-addr-family)
+  (rtnl-addr-get-prefixlen rtnl-addr-set-prefixlen! _int)
+  (rtnl-addr-get-scope rtnl-addr-set-scope! _int)
+  (rtnl-addr-get-valid-lifetime rtnl-addr-set-valid-lifetime! _uint32)
+  (rtnl-addr-get-preferred-lifetime rtnl-addr-set-preferred-lifetime! _uint32))
+
+(define-accessors _rtnl-addr-pointer
+                  (rtnl-addr-get-link _rtnl-link-pointer/null
+                                      (allocator nl-object-put!))
+                  (rtnl-addr-set-link! _rtnl-link-pointer/null))
+
+(define-accessors _rtnl-addr-pointer
+                  (rtnl-addr-get-local _nl-addr-pointer/null
+                                       (lender nl-addr-get!))
+                  (rtnl-addr-set-local! _nl-addr-pointer/null))
+
+(define-accessors _rtnl-addr-pointer
+                  (rtnl-addr-get-peer _nl-addr-pointer/null
+                                      (lender nl-addr-get!))
+                  (rtnl-addr-set-peer! _nl-addr-pointer/null))
+
+(define-accessors _rtnl-addr-pointer
+                  (rtnl-addr-get-broadcast _nl-addr-pointer/null
+                                           (lender nl-addr-get!))
+                  (rtnl-addr-set-broadcast! _nl-addr-pointer/null))
+
+(define-accessors _rtnl-addr-pointer
+                  (rtnl-addr-get-multicast _nl-addr-pointer/null
+                                           (lender nl-addr-get!))
+                  (rtnl-addr-set-multicast! _nl-addr-pointer/null))
+
+(define-accessors _rtnl-addr-pointer
+                  (rtnl-addr-get-anycast _nl-addr-pointer/null
+                                         (lender nl-addr-get!))
+                  (rtnl-addr-set-anycast! _nl-addr-pointer/null))
 
 (define-rtnl rtnl-addr-get-create-time
              (_fun _rtnl-addr-pointer --> _uint32))
@@ -874,8 +942,8 @@
 ;
 
 (define-rtnl rtnl-route-alloc
-             (_fun --> (result : _rtnl-route-pointer)
-                   --> (with-finalizer result nl-object-put!)))
+             (_fun --> _rtnl-route-pointer)
+             #:wrap (allocator nl-object-put!))
 
 (define-rtnl rtnl-route-alloc-cache
              (_fun _nl-socket-pointer
@@ -884,9 +952,8 @@
                             cache = 1))
                    (cache : (_ptr o _nl-cache-pointer))
                    --> (result : _int)
-                   --> (begin
-                         (check-result result)
-                         (with-finalizer cache nl-cache-put!))))
+                   --> (begin (check-result result) cache))
+             #:wrap (allocator nl-cache-put!))
 
 (define-rtnl rtnl-route-add!
              (_fun _nl-socket-pointer
@@ -902,25 +969,30 @@
                    --> (result : _int)
                    --> (check-result result)))
 
-(define-syntax-rule (define-rtnl-route-accessors (setter getter type) ...)
-  (begin
-    (begin
-      (define-rtnl setter (_fun _rtnl-route-pointer type --> _void))
-      (define-rtnl getter (_fun _rtnl-route-pointer --> type)))
-    ...))
+(define-simple-accessors _rtnl-route-pointer
+  (rtnl-route-get-table rtnl-route-set-table! _uint32)
+  (rtnl-route-get-scope rtnl-route-set-scope! _uint8)
+  (rtnl-route-get-tos rtnl-route-set-tos! _uint8)
+  (rtnl-route-get-protocol rtnl-route-set-protocol! _nl-addr-family)
+  (rtnl-route-get-priority rtnl-route-set-priority! _uint32)
+  (rtnl-route-get-family rtnl-route-set-family! _nl-addr-family)
+  (rtnl-route-get-type rtnl-route-set-type! _uint8)
+  (rtnl-route-get-iif rtnl-route-set-iif! _int))
 
-(define-rtnl-route-accessors
-  (rtnl-route-set-table!    rtnl-route-get-table    _uint32)
-  (rtnl-route-set-scope!    rtnl-route-get-scope    _uint8)
-  (rtnl-route-set-tos!      rtnl-route-get-tos      _uint8)
-  (rtnl-route-set-protocol! rtnl-route-get-protocol _nl-addr-family)
-  (rtnl-route-set-priority! rtnl-route-get-priority _uint32)
-  (rtnl-route-set-family!   rtnl-route-get-family   _nl-addr-family)
-  (rtnl-route-set-type!     rtnl-route-get-type     _uint8)
-  (rtnl-route-set-dst!      rtnl-route-get-dst      _nl-addr-pointer/null)
-  (rtnl-route-set-src!      rtnl-route-get-src      _nl-addr-pointer/null)
-  (rtnl-route-set-pref-src! rtnl-route-get-pref-src _nl-addr-pointer/null)
-  (rtnl-route-set-iif!      rtnl-route-get-iif      _int))
+(define-accessors _rtnl-route-pointer
+                  (rtnl-route-get-dst _nl-addr-pointer/null
+                                      (allocator nl-object-put!))
+                  (rtnl-route-set-dst! _nl-addr-pointer/null))
+
+(define-accessors _rtnl-route-pointer
+                  (rtnl-route-get-src _nl-addr-pointer/null
+                                      (allocator nl-object-put!))
+                  (rtnl-route-set-src! _nl-addr-pointer/null))
+
+(define-accessors _rtnl-route-pointer
+                  (rtnl-route-get-pref-src _nl-addr-pointer/null
+                                           (allocator nl-object-put!))
+                  (rtnl-route-set-pref-src! _nl-addr-pointer/null))
 
 (define-rtnl rtnl-route-add-nexthop!
              (_fun _rtnl-route-pointer
@@ -940,8 +1012,8 @@
 (define-rtnl rtnl-route-nexthop-n
              (_fun _rtnl-route-pointer
                    _int
-                   --> (result : _rtnl-nexthop-pointer/null)
-                   --> (with-finalizer result nl-object-put!)))
+                   --> _rtnl-nexthop-pointer/null)
+             #:wrap (allocator nl-object-put!))
 
 (define (rtnl-route-nexthops route)
   (for/list ((i (in-range (rtnl-route-get-nnexthops route))))
@@ -987,21 +1059,18 @@
 ;
 
 (define-rtnl rtnl-route-nh-alloc
-             (_fun --> (result : _rtnl-nexthop-pointer)
-                   --> (with-finalizer result nl-object-put!)))
+             (_fun --> _rtnl-nexthop-pointer)
+             #:wrap (allocator nl-object-put!))
 
-(define-syntax-rule (define-rtnl-nexthop-accessors (setter getter type) ...)
-  (begin
-    (begin
-      (define-rtnl setter (_fun _rtnl-nexthop-pointer type --> _void))
-      (define-rtnl getter (_fun _rtnl-nexthop-pointer --> type)))
-    ...))
+(define-simple-accessors _rtnl-nexthop-pointer
+  (rtnl-route-nh-get-weight rtnl-route-nh-set-weight! _uint8)
+  (rtnl-route-nh-get-ifindex rtnl-route-nh-set-ifindex! _int)
+  (rtnl-route-nh-get-realms rtnl-route-nh-set-realms! _uint32))
 
-(define-rtnl-nexthop-accessors
-  (rtnl-route-nh-set-weight!  rtnl-route-nh-get-weight  _uint8)
-  (rtnl-route-nh-set-ifindex! rtnl-route-nh-get-ifindex _int)
-  (rtnl-route-nh-set-gateway! rtnl-route-nh-get-gateway _nl-addr-pointer/null)
-  (rtnl-route-nh-set-realms!  rtnl-route-nh-get-realms  _uint32))
+(define-accessors _rtnl-nexthop-pointer
+                  (rtnl-route-nh-get-gateway _nl-addr-pointer/null
+                                             (lender nl-addr-get!))
+                  (rtnl-route-nh-set-gateway! _nl-addr-pointer/null))
 
 
 ; vim:set ts=2 sw=2 et:
