@@ -10,6 +10,7 @@
          racket/match
          racket/string
          racket/provide
+         misc1/syntax
          misc1/throw)
 
 (provide (filtered-out (lambda (name)
@@ -387,8 +388,7 @@
   (rtnl-link-set-broadcast! rtnl-link-get-broadcast _nl-addr-pointer/null)
   (rtnl-link-set-link!      rtnl-link-get-link      _int)
   (rtnl-link-set-master!    rtnl-link-get-master    _int)
-  (rtnl-link-set-ifalias!   rtnl-link-get-ifalias   _string/utf-8)
-  (rtnl-link-set-type!      rtnl-link-get-type      _symbol))
+  (rtnl-link-set-ifalias!   rtnl-link-get-ifalias   _string/utf-8))
 
 (define-rtnl-link-accessors
   (rtnl-link-set-promiscuity!   rtnl-link-get-promiscuity   _uint32)
@@ -671,6 +671,20 @@
 
 (define-rtnl rtnl-link-str2carrier
              (_fun _string/utf-8 --> _int))
+
+
+(define-rtnl rtnl-link-set-type!
+             (_fun _rtnl-link-pointer
+                   _symbol
+                   --> (result : _int)
+                   --> (check-result result)))
+
+(define-rtnl rtnl-link-get-type
+             (_fun _rtnl-link-pointer
+                   --> (result : _bytes)
+                   --> (and result
+                            (producing (sym (cast result _bytes _symbol))
+                              (free result)))))
 
 (define-rtnl rtnl-link-get-flags
              (_fun _rtnl-link-pointer
