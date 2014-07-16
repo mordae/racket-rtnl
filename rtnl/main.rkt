@@ -78,6 +78,16 @@
     (throw exn:fail:nl
            'rtnl (nl-geterror (abs result)))))
 
+(define (check-int-result result)
+  (producing result
+    (when (negative? result)
+      (throw exn:fail:nl 'rtnl (nl-geterror (abs result))))))
+
+(define (check-buffer->string/utf-8 buffer)
+  (if buffer
+      (cast buffer _bytes _string/utf-8)
+      (throw exn:fail:nl 'rtnl "invalid value")))
+
 
 (define-cpointer-type _nl-object-pointer)
 (define-cpointer-type _nl-cache-pointer)
@@ -165,7 +175,8 @@
 (define-nl nl-addr-cmp
            (_fun _nl-addr-pointer
                  _nl-addr-pointer
-                 --> _int))
+                 --> (result : _int)
+                 --> (check-int-result result)))
 
 (define-nl nl-addr-iszero?
            (_fun _nl-addr-pointer --> _bool))
@@ -193,9 +204,7 @@
                          = (make-bytes (+ 5 (* 4 (nl-addr-get-len addr)))))
                  (size : _size = (bytes-length buffer))
                  --> (result : _bytes)
-                 --> (and result
-                          (string-trim
-                            (bytes->string/utf-8 buffer) "\0" #:repeat? #t))))
+                 --> (check-buffer->string/utf-8 buffer)))
 
 (define (nl-addr->string addr)
   (nl-addr2str addr))
@@ -288,12 +297,15 @@
            (_fun _nl-cache-pointer --> _void))
 
 (define-nl nl-cache-nitems
-           (_fun _nl-cache-pointer --> _int))
+           (_fun _nl-cache-pointer
+                 --> (result : _int)
+                 --> (check-int-result result)))
 
 (define-nl nl-cache-nitems/filter
            (_fun _nl-cache-pointer
                  _nl-object-pointer
-                 --> _int))
+                 --> (result : _int)
+                 --> (check-int-result result)))
 
 (define-nl nl-cache-get-first
            (_fun _nl-cache-pointer
@@ -482,7 +494,9 @@
                    --> (check-result result)))
 
 (define-rtnl rtnl-link-bridge-get-port-state
-             (_fun _rtnl-link-pointer --> _int))
+             (_fun _rtnl-link-pointer
+                   --> (result : _int)
+                   --> (check-int-result result)))
 
 (define-rtnl rtnl-link-bridge-set-priority!
              (_fun _rtnl-link-pointer
@@ -491,7 +505,9 @@
                    --> (check-result result)))
 
 (define-rtnl rtnl-link-bridge-get-priority
-             (_fun _rtnl-link-pointer --> _int))
+             (_fun _rtnl-link-pointer
+                   --> (result : _int)
+                   --> (check-int-result result)))
 
 (define-rtnl rtnl-link-bridge-set-cost!
              (_fun _rtnl-link-pointer
@@ -547,19 +563,21 @@
                    --> (check-result result)))
 
 (define-rtnl rtnl-link-vlan-get-id
-             (_fun _rtnl-link-pointer --> _int))
+             (_fun _rtnl-link-pointer
+                   --> (result : _int)
+                   --> (check-int-result result)))
 
 (define-rtnl rtnl-link-vlan-flags2str
              (_fun _int
-                   (buf : _bytes = (make-bytes 512))
-                   (size : _size = (bytes-length buf))
+                   (buffer : _bytes = (make-bytes 512))
+                   (size : _size = (bytes-length buffer))
                    --> (result : _bytes)
-                   --> (and result
-                            (string-trim
-                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+                   --> (check-buffer->string/utf-8 buffer)))
 
 (define-rtnl rtnl-link-vlan-str2flags
-             (_fun _string/utf-8 --> _int))
+             (_fun _string/utf-8
+                   --> (result : _int)
+                   --> (check-int-result result)))
 
 (define-rtnl rtnl-link-vlan-get-flags
              (_fun _rtnl-link-pointer
@@ -612,65 +630,64 @@
 (define-rtnl rtnl-link-i2name
              (_fun _nl-cache-pointer
                    _int
-                   (buf : _bytes = (make-bytes 16))
-                   (size : _size = (bytes-length buf))
+                   (buffer : _bytes = (make-bytes 16))
+                   (size : _size = (bytes-length buffer))
                    --> (result : _bytes)
-                   --> (and result
-                            (string-trim
-                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+                   --> (check-buffer->string/utf-8 buffer)))
 
 (define-rtnl rtnl-link-name2i
              (_fun _nl-cache-pointer
                    _string/utf-8
-                   --> _int))
+                   --> (result : _int)
+                   --> (check-int-result result)))
 
 (define-rtnl rtnl-link-flags2str
              (_fun _int
-                   (buf : _bytes = (make-bytes 1024))
-                   (size : _size = (bytes-length buf))
+                   (buffer : _bytes = (make-bytes 1024))
+                   (size : _size = (bytes-length buffer))
                    --> (result : _bytes)
-                   --> (and result
-                            (string-trim
-                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+                   --> (check-buffer->string/utf-8 buffer)))
 
 (define-rtnl rtnl-link-str2flags
-             (_fun _string/utf-8 --> _int))
+             (_fun _string/utf-8
+                   --> (result : _int)
+                   --> (check-int-result result)))
 
 (define-rtnl rtnl-link-operstate2str
              (_fun _uint8
-                   (buf : _bytes = (make-bytes 32))
-                   (size : _size = (bytes-length buf))
+                   (buffer : _bytes = (make-bytes 32))
+                   (size : _size = (bytes-length buffer))
                    --> (result : _bytes)
-                   --> (and result
-                            (string-trim
-                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+                   --> (check-buffer->string/utf-8 buffer)))
 
 (define-rtnl rtnl-link-str2operstate
-             (_fun _string/utf-8 --> _int))
+             (_fun _string/utf-8
+                   --> (result : _int)
+                   --> (check-int-result result)))
 
 (define-rtnl rtnl-link-mode2str
              (_fun _uint8
-                   (buf : _bytes = (make-bytes 32))
-                   (size : _size = (bytes-length buf))
+                   (buffer : _bytes = (make-bytes 32))
+                   (size : _size = (bytes-length buffer))
                    --> (result : _bytes)
-                   --> (and result
-                            (string-trim
-                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+                   --> (check-buffer->string/utf-8 buffer)))
 
 (define-rtnl rtnl-link-str2mode
-             (_fun _string/utf-8 --> _int))
+             (_fun _string/utf-8
+                   --> (result : _int)
+                   --> (check-int-result result)))
 
 (define-rtnl rtnl-link-carrier2str
              (_fun _uint8
-                   (buf : _bytes = (make-bytes 32))
-                   (size : _size = (bytes-length buf))
+                   (buffer : _bytes = (make-bytes 32))
+                   (size : _size = (bytes-length buffer))
                    --> (result : _bytes)
-                   --> (and result
-                            (string-trim
-                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+                   --> (check-buffer->string/utf-8 buffer)))
 
 (define-rtnl rtnl-link-str2carrier
-             (_fun _string/utf-8 --> _int))
+             (_fun _string/utf-8
+                   --> (result : _int)
+                   --> (check-int-result result)))
 
 
 (define-rtnl rtnl-link-set-type!
@@ -813,15 +830,15 @@
 
 (define-rtnl rtnl-addr-flags2str
              (_fun _int
-                   (buf : _bytes = (make-bytes 512))
-                   (size : _size = (bytes-length buf))
+                   (buffer : _bytes = (make-bytes 512))
+                   (size : _size = (bytes-length buffer))
                    --> (result : _bytes)
-                   --> (and result
-                            (string-trim
-                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+                   --> (check-buffer->string/utf-8 buffer)))
 
 (define-rtnl rtnl-addr-str2flags
-             (_fun _string/utf-8 --> _int))
+             (_fun _string/utf-8
+                   --> (result : _int)
+                   --> (check-int-result result)))
 
 (define-rtnl rtnl-addr-get-flags
              (_fun _rtnl-addr-pointer
@@ -910,7 +927,9 @@
                    --> _void))
 
 (define-rtnl rtnl-route-get-nnexthops
-             (_fun _rtnl-route-pointer --> _int))
+             (_fun _rtnl-route-pointer
+                   --> (result : _int)
+                   --> (check-int-result result)))
 
 (define-rtnl rtnl-route-nexthop-n
              (_fun _rtnl-route-pointer
@@ -924,15 +943,15 @@
 
 (define-rtnl rtnl-route-nh-flags2str
              (_fun _int
-                   (buf : _bytes = (make-bytes 512))
-                   (size : _size = (bytes-length buf))
+                   (buffer : _bytes = (make-bytes 512))
+                   (size : _size = (bytes-length buffer))
                    --> (result : _bytes)
-                   --> (and result
-                            (string-trim
-                              (bytes->string/utf-8 buf) "\0" #:repeat? #t))))
+                   --> (check-buffer->string/utf-8 buffer)))
 
 (define-rtnl rtnl-route-nh-str2flags
-             (_fun _string/utf-8 --> _int))
+             (_fun _string/utf-8
+                   --> (result : _int)
+                   --> (check-int-result result)))
 
 (define-rtnl rtnl-route-nh-get-flags
              (_fun _rtnl-link-pointer
