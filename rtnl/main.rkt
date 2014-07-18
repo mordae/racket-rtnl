@@ -4,8 +4,7 @@
 ;
 
 (require
-  (for-syntax racket/base)
-  (for-syntax racket/syntax))
+  (for-syntax racket/base))
 
 (require
   (rename-in ffi/unsafe (-> -->)))
@@ -15,8 +14,7 @@
          ffi/unsafe/alloc
          racket/contract
          racket/string
-         racket/match
-         racket/list)
+         racket/match)
 
 (require misc1/syntax
          misc1/throw)
