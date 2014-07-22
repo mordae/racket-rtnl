@@ -743,11 +743,7 @@
                    --> (check-result result)))
 
 (define-rtnl rtnl-link-get-type
-             (_fun _rtnl-link-pointer
-                   --> (result : _bytes)
-                   --> (and result
-                            (producing (sym (cast result _bytes _symbol))
-                              (free result)))))
+             (_fun _rtnl-link-pointer --> _symbol))
 
 (define-rtnl rtnl-link-get-flags
              (_fun _rtnl-link-pointer
