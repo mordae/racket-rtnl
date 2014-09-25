@@ -120,7 +120,7 @@
   (λ args
     (call-as-atomic
       (λ_
-        (producing (result (apply proc args))
+        (producing ((result (apply proc args)))
           (when result
             (incref result)))))))
 
@@ -314,17 +314,17 @@
 
 (define (nl-object-upcast object)
   (and object
-       (producing (new-object
-                    (match (nl-object-get-type object)
-                      ('route/link
-                       (cast object _nl-object-pointer _rtnl-link-pointer))
-                      ('route/route
-                       (cast object _nl-object-pointer _rtnl-route-pointer))
-                      ('route/nexthop
-                       (cast object _nl-object-pointer _rtnl-nexthop-pointer))
-                      ('route/addr
-                       (cast object _nl-object-pointer _rtnl-addr-pointer))
-                      (else object)))
+       (producing ((new-object
+                     (match (nl-object-get-type object)
+                       ('route/link
+                        (cast object _nl-object-pointer _rtnl-link-pointer))
+                       ('route/route
+                        (cast object _nl-object-pointer _rtnl-route-pointer))
+                       ('route/nexthop
+                        (cast object _nl-object-pointer _rtnl-nexthop-pointer))
+                       ('route/addr
+                        (cast object _nl-object-pointer _rtnl-addr-pointer))
+                       (else object))))
          (nl-object-get! new-object))))
 
 
