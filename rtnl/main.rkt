@@ -119,7 +119,7 @@
 (define ((lender incref) proc)
   (λ args
     (call-as-atomic
-      (λ_
+      (λ _
         (producing ((result (apply proc args)))
           (when result
             (incref result)))))))
